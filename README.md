@@ -30,13 +30,33 @@ docker run --rm -ti \
 docker run --rm -ti \
   -v ~/.aws:/root/.aws \
   -p 8080:8080 \
+  -e 'AWS_SDK_LOAD_CONFIG=true' \
   -e 'AWS_PROFILE=<SOME PROFILE>' \
   aws-sigv4-proxy -v
 ```
 
+### Configuration
+
+When running the Proxy, the following flags can be used (none are required) :
+
+| Flag (or short form)          | Type     | Description                                              | Default |
+|-------------------------------|----------|----------------------------------------------------------|---------|
+| `verbose` or `v`              | Boolean  | Enable additional logging, implies all the log-* options | `False` |
+| `log-failed-requests`         | Boolean  | Log 4xx and 5xx response body                            | `False` |
+| `log-signing-process`         | Boolean  | Log sigv4 signing process                                | `False` |
+| `port`                        | String   | Port to serve http on                                    | `8080`  |
+| `strip` or `s`                | String   | Headers to strip from incoming request                   | None    |
+| `role-arn`                    | String   | Amazon Resource Name (ARN) of the role to assume         | None    |
+| `name`                        | String   | AWS Service to sign for                                  | None    |
+| `host`                        | String   | Host to proxy to                                         | None    |
+| `region`                      | String   | AWS region to sign for                                   | None    |
+| `no-verify-ssl`               | Boolean  | Disable peer SSL certificate validation                  | `False` |
+| `transport.idle-conn-timeout` | Duration | Idle timeout to the upstream service                     | `40s`   |
+
 ## Examples
 
 S3
+
 ```
 # us-east-1
 curl -s -H 'host: s3.amazonaws.com' http://localhost:8080/<BUCKET_NAME>
@@ -46,38 +66,46 @@ curl -s -H 'host: s3.<BUCKET_REGION>.amazonaws.com' http://localhost:8080/<BUCKE
 ```
 
 SQS
+
 ```sh
 curl -s -H 'host: sqs.<AWS_REGION>.amazonaws.com' 'http://localhost:8080/<AWS_ACCOUNT_ID>/<QUEUE_NAME>?Action=SendMessage&MessageBody=example'
 ```
 
 API Gateway
+
 ```sh
 curl -H 'host: <REST_API_ID>.execute-api.<AWS_REGION>.amazonaws.com' http://localhost:8080/<STAGE>/<PATH>
 ```
 
 Running the service and stripping out sigv2 authorization headers
+
 ```sh
 docker run --rm -ti \
   -v ~/.aws:/root/.aws \
   -p 8080:8080 \
+  -e 'AWS_SDK_LOAD_CONFIG=true' \
   -e 'AWS_PROFILE=<SOME PROFILE>' \
   aws-sigv4-proxy -v -s Authorization
 ```
 
 Running the service with Assume Role to use temporary credentials
+
 ```sh
 docker run --rm -ti \
   -v ~/.aws:/root/.aws \
   -p 8080:8080 \
+  -e 'AWS_SDK_LOAD_CONFIG=true' \
   -e 'AWS_PROFILE=<SOME PROFILE>' \
   aws-sigv4-proxy -v --role-arn <ARN OF ROLE TO ASSUME>
 ```
 
 Include service name & region overrides when you notice errors like `unable to determine service from host` for API gateway, for example.
+
 ```sh
 docker run --rm -ti \
   -v ~/.aws:/root/.aws \
   -p 8080:8080 \
+  -e 'AWS_SDK_LOAD_CONFIG=true' \
   -e 'AWS_PROFILE=<SOME PROFILE>' \
   aws-sigv4-proxy -v --name execute-api --region us-east-1
 ```
@@ -86,7 +114,6 @@ docker run --rm -ti \
 
 - [AWS SigV4 Signing Docs ](https://docs.aws.amazon.com/general/latest/gr/signature-version-4.html)
 - [AWS SigV4 Admission Controller](https://github.com/aws-observability/aws-sigv4-proxy-admission-controller) - Used to install the AWS SigV4 Proxy as a sidecar
-
 
 ## License
 

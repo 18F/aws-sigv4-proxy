@@ -45,6 +45,7 @@ var (
 	hostOverride           = kingpin.Flag("host", "Host to proxy to").String()
 	regionOverride         = kingpin.Flag("region", "AWS region to sign for").String()
 	disableSSLVerification = kingpin.Flag("no-verify-ssl", "Disable peer SSL certificate validation").Bool()
+	idleConnTimeout        = kingpin.Flag("transport.idle-conn-timeout", "Idle timeout to the upstream service").Default("40s").Duration()
 )
 
 type awsLoggerAdapter struct {
@@ -68,6 +69,8 @@ func main() {
 		sessionConfig.STSRegionalEndpoint = endpoints.RegionalSTSEndpoint
 	}
 
+	sessionConfig.CredentialsChainVerboseErrors = aws.Bool(shouldLogSigning())
+
 	session, err := session.NewSession(&sessionConfig)
 	if err != nil {
 		log.Fatal(err)
@@ -88,6 +91,8 @@ func main() {
 		http.DefaultTransport.(*http.Transport).TLSClientConfig = &tls.Config{InsecureSkipVerify: true}
 	}
 
+	http.DefaultTransport.(*http.Transport).IdleConnTimeout = *idleConnTimeout
+
 	var credentials *credentials.Credentials
 	if *roleArn != "" {
 		credentials = stscreds.NewCredentials(session, *roleArn, func(p *stscreds.AssumeRoleProvider) {
@@ -98,11 +103,16 @@ func main() {
 	}
 
 	signer := v4.NewSigner(credentials, func(s *v4.Signer) {
-		if *logSinging || *debug {
+		if shouldLogSigning() {
 			s.Logger = awsLoggerAdapter{}
 			s.Debug = aws.LogDebugWithSigning
 		}
 	})
+	client := &http.Client{
+		CheckRedirect: func(req *http.Request, via []*http.Request) error {
+			return http.ErrUseLastResponse
+		},
+	}
 
 	log.WithFields(log.Fields{"StripHeaders": *strip}).Infof("Stripping headers %s", *strip)
 	log.WithFields(log.Fields{"port": *port}).Infof("Listening on %s", *port)
@@ -111,7 +121,7 @@ func main() {
 		http.ListenAndServe(*port, &handler.Handler{
 			ProxyClient: &handler.ProxyClient{
 				Signer:              signer,
-				Client:              http.DefaultClient,
+				Client:              client,
 				StripRequestHeaders: *strip,
 				SigningNameOverride: *signingNameOverride,
 				HostOverride:        *hostOverride,
@@ -120,6 +130,10 @@ func main() {
 			},
 		}),
 	)
+}
+
+func shouldLogSigning() bool {
+	return *logSinging || *debug
 }
 
 func roleSessionName() string {

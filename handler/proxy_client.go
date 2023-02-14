@@ -56,6 +56,17 @@ func (p *ProxyClient) sign(req *http.Request, service *endpoints.ResolvedEndpoin
 		body = bytes.NewReader(b)
 	}
 
+	// S3 service should not have any escaping applied.
+	// https://github.com/aws/aws-sdk-go/blob/main/aws/signer/v4/v4.go#L467-L470
+        if (service.SigningName == "s3") {
+		p.Signer.DisableURIPathEscaping = true
+
+		// Enable URI escaping for subsequent calls.
+		defer func() {
+			p.Signer.DisableURIPathEscaping = false
+		}()
+	}
+
 	var err error
 	switch service.SigningMethod {
 	case "v4", "s3v4":
@@ -108,6 +119,9 @@ func (p *ProxyClient) Do(req *http.Request) (*http.Response, error) {
 	if err != nil {
 		return nil, err
 	}
+	if req.ContentLength >= 0 {
+		proxyReq.ContentLength = req.ContentLength
+	}
 
 	var service *endpoints.ResolvedEndpoint
 	if p.SigningNameOverride != "" && p.RegionOverride != "" {
@@ -121,6 +135,14 @@ func (p *ProxyClient) Do(req *http.Request) (*http.Response, error) {
 
 	if err := p.sign(proxyReq, service); err != nil {
 		return nil, err
+	}
+
+	// When ContentLength is 0 we also need to set the body to http.NoBody to avoid Go http client
+	// to magically set Transfer-Encoding: chunked. Service like S3 does not support chunk encoding.
+	// We need to manipulate the Body value after signv4 signing because the signing process wraps
+	// the original body into another struct, which will result in Transfer-Encoding: chunked being set.
+	if proxyReq.ContentLength == 0 {
+		proxyReq.Body = http.NoBody
 	}
 
 	// Remove any headers specified

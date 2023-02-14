@@ -1,25 +1,20 @@
-FROM amazonlinux:latest AS build
+FROM golang:1.19.0-alpine AS build
 
-RUN yum -y update && rm -rf /var/cache/yum/*
-RUN yum install -y  \
+RUN apk --update add \
       ca-certificates \
-      git \
-      bash \
-      go
+      git
 
 RUN mkdir /aws-sigv4-proxy
 WORKDIR /aws-sigv4-proxy
-COPY go.mod .
-COPY go.sum .
+COPY  . .
 
 RUN go env -w GOPROXY=direct
-RUN go mod download
-COPY . .
 
-RUN CGO_ENABLED=0 GOOS=linux go build -o /go/bin/aws-sigv4-proxy
+RUN CGO_ENABLED=0 GOOS=linux go build ./cmd/aws-sigv4-proxy
 
-FROM scratch
-COPY --from=build /etc/ssl/certs/ca-bundle.crt /etc/ssl/certs/
-COPY --from=build /go/bin/aws-sigv4-proxy /go/bin/aws-sigv4-proxy
+FROM alpine:3
+COPY --from=build /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/
+COPY --from=build /aws-sigv4-proxy/aws-sigv4-proxy ./
 
-ENTRYPOINT [ "/go/bin/aws-sigv4-proxy" ]
+ENTRYPOINT [ "./aws-sigv4-proxy" ]
+
