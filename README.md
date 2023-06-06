@@ -44,12 +44,15 @@ When running the Proxy, the following flags can be used (none are required) :
 | `verbose` or `v`              | Boolean  | Enable additional logging, implies all the log-* options | `False` |
 | `log-failed-requests`         | Boolean  | Log 4xx and 5xx response body                            | `False` |
 | `log-signing-process`         | Boolean  | Log sigv4 signing process                                | `False` |
+| `unsigned-payload`            | Boolean  | Prevent signing of the payload"                          | `False` |
 | `port`                        | String   | Port to serve http on                                    | `8080`  |
 | `strip` or `s`                | String   | Headers to strip from incoming request                   | None    |
 | `role-arn`                    | String   | Amazon Resource Name (ARN) of the role to assume         | None    |
 | `name`                        | String   | AWS Service to sign for                                  | None    |
+| `sign-host`                   | String   | Host to sign for                                         | None    |
 | `host`                        | String   | Host to proxy to                                         | None    |
 | `region`                      | String   | AWS region to sign for                                   | None    |
+| `pstream-url-scheme`          | String   | Protocol to proxy with                                   | https   |
 | `no-verify-ssl`               | Boolean  | Disable peer SSL certificate validation                  | `False` |
 | `transport.idle-conn-timeout` | Duration | Idle timeout to the upstream service                     | `40s`   |
 
@@ -109,6 +112,44 @@ docker run --rm -ti \
   -e 'AWS_PROFILE=<SOME PROFILE>' \
   aws-sigv4-proxy -v --name execute-api --region us-east-1
 ```
+
+OpenSearch
+
+* Access AWS OpenSearch domain, hosted in private subnet of AWS VPC, with access policy restricted to IAM role.
+
+  Prepare connection (assume role, export `AWS_PROFILE`, run ssh tunnel):
+    ```sh
+    aws sts assume-role \
+     --role-arn "arn:aws:iam::123456789012:role/example-role" \
+     --role-session-name role-profile
+    export AWS_PROFILE=role-profile
+    
+    ssh \
+     -4 \
+     -o BatchMode="yes" \
+     -o StrictHostKeyChecking="no" \
+     -o ProxyCommand="aws ssm start-session --target %h --region eu-west-1 --document-name AWS-StartSSHSession --parameters portNumber=%p" \
+     -i /Users/user/.ssh/id_rsa ubuntu@i-bastion-host \
+     -L 4443:vpc-private-domain-name.eu-west-1.es.amazonaws.com:443 \
+     -N
+    ```
+
+    Finally, run proxy: 
+    ```sh
+    docker run --rm -ti \
+         -v ~/.aws:/root/.aws \
+         --network=bridge \
+         -p 8080:8080 \
+         -e "AWS_SDK_LOAD_CONFIG=true" \
+         -e "AWS_PROFILE=role-profile" \
+         aws-sigv4-proxy \
+                 --verbose --log-failed-requests --log-signing-process --no-verify-ssl \
+                 --name es --region eu-west-1 \
+                 --host host.docker.internal:4443 \
+                 --sign-host eu-west-1.es.amazonaws.com
+    ```
+  
+  Access dashboard via http://localhost:8080/_dashboards/app/home#/tutorial_directory
 
 ## Reference
 

@@ -42,10 +42,13 @@ var (
 	strip                  = kingpin.Flag("strip", "Headers to strip from incoming request").Short('s').Strings()
 	roleArn                = kingpin.Flag("role-arn", "Amazon Resource Name (ARN) of the role to assume").String()
 	signingNameOverride    = kingpin.Flag("name", "AWS Service to sign for").String()
+	signingHostOverride    = kingpin.Flag("sign-host", "Host to sign for").String()
 	hostOverride           = kingpin.Flag("host", "Host to proxy to").String()
 	regionOverride         = kingpin.Flag("region", "AWS region to sign for").String()
 	disableSSLVerification = kingpin.Flag("no-verify-ssl", "Disable peer SSL certificate validation").Bool()
 	idleConnTimeout        = kingpin.Flag("transport.idle-conn-timeout", "Idle timeout to the upstream service").Default("40s").Duration()
+	schemeOverride         = kingpin.Flag("upstream-url-scheme", "Protocol to proxy with").String()
+	unsignedPayload        = kingpin.Flag("unsigned-payload", "Prevent signing of the payload").Default("false").Bool()
 )
 
 type awsLoggerAdapter struct {
@@ -101,12 +104,13 @@ func main() {
 	} else {
 		credentials = session.Config.Credentials
 	}
-
+	
 	signer := v4.NewSigner(credentials, func(s *v4.Signer) {
 		if shouldLogSigning() {
 			s.Logger = awsLoggerAdapter{}
 			s.Debug = aws.LogDebugWithSigning
 		}
+		s.UnsignedPayload = *unsignedPayload
 	})
 	client := &http.Client{
 		CheckRedirect: func(req *http.Request, via []*http.Request) error {
@@ -124,9 +128,11 @@ func main() {
 				Client:              client,
 				StripRequestHeaders: *strip,
 				SigningNameOverride: *signingNameOverride,
+				SigningHostOverride: *signingHostOverride,
 				HostOverride:        *hostOverride,
 				RegionOverride:      *regionOverride,
 				LogFailedRequest:    *logFailedResponse,
+				SchemeOverride:      *schemeOverride,
 			},
 		}),
 	)
