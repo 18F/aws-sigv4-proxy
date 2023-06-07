@@ -16,6 +16,7 @@ applications:
     services:
       - sk-elasticsearch
     env:
+      GO_INSTALL_PACKAGE_SPEC: aws-sigv4-proxy/cmd/aws-sigv4-proxy
       GOPROXY: direct
       CGO_ENABLED: '0'
       GOOS: linux
